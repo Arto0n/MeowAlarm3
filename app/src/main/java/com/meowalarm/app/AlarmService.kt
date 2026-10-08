@@ -6,6 +6,8 @@ import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.os.*
 import kotlin.math.*
 
@@ -18,12 +20,13 @@ class AlarmService : Service() {
     }
 
     private var track: AudioTrack? = null
-    private var vol = 0.35f
+    private var fallbackPlayer: MediaPlayer? = null
+    private var vol = 0.8f
     private val handler = Handler(Looper.getMainLooper())
     private val ramp = object : Runnable {
         override fun run() {
             if (track == null) return
-            vol = min(1f, vol + 0.08f)
+            vol = min(1f, vol + 0.05f)
             runCatching { track?.setVolume(vol) }
             handler.postDelayed(this, 2500)
         }
@@ -118,15 +121,16 @@ class AlarmService : Service() {
                 "Could not write full alarm audio buffer"
             }
             candidate.setLoopPoints(0, samples.size, -1)
-            vol = 0.35f
+            vol = 0.8f
             candidate.setVolume(vol)
             candidate.play()
             track = candidate
             candidate = null // ownership moves to the service
             handler.removeCallbacks(ramp)
-            handler.postDelayed(ramp, 2000)
+            handler.postDelayed(ramp, 1500)
         } catch (ex: Exception) {
-            android.util.Log.e("MeowAlarm", "Unable to start alarm audio", ex)
+            android.util.Log.e("MeowAlarm", "Unable to start synthesized alarm audio, trying system alarm tone", ex)
+            startFallbackSound()
         } finally {
             // A failed AudioTrack must not leak its underlying native audio resources.
             runCatching { candidate?.release() }
@@ -144,10 +148,45 @@ class AlarmService : Service() {
         }
     }
 
+    /** Use the phone's alarm tone if custom audio playback fails on this device. */
+    private fun startFallbackSound() {
+        val uris = listOfNotNull(
+            runCatching { RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM) }.getOrNull(),
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        )
+        for (uri in uris) {
+            var candidate: MediaPlayer? = null
+            try {
+                val player = MediaPlayer()
+                candidate = player
+                player.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                player.setDataSource(this, uri)
+                player.isLooping = true
+                player.prepare()
+                player.setVolume(1f, 1f)
+                player.start()
+                fallbackPlayer = player
+                return
+            } catch (ex: Exception) {
+                android.util.Log.w("MeowAlarm", "Could not play fallback alarm tone: $uri", ex)
+                runCatching { candidate?.release() }
+            }
+        }
+        android.util.Log.e("MeowAlarm", "No alarm audio could be started; check alarm volume and default alarm tone")
+    }
+
     private fun stopRing() {
         handler.removeCallbacks(ramp)
         track?.let { runCatching { it.pause() }; runCatching { it.flush() }; runCatching { it.release() } }
         track = null
+        fallbackPlayer?.let { runCatching { it.stop() }; runCatching { it.release() } }
+        fallbackPlayer = null
         getSystemService(Vibrator::class.java)?.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         Ring.active = false
@@ -186,6 +225,16 @@ object Meow {
             }
             val env = min(1.0, t / .08) * min(1.0, (dur - t) / .12)
             out[i] = (s * env * 2600).coerceIn(-32767.0, 32767.0).toInt().toShort()
+        }
+        // Original synthesis can be too quiet on phone speakers. Normalize
+        // the waveform without clipping; Android's alarm stream sets final loudness.
+        val peak = out.maxOfOrNull { kotlin.math.abs(it.toInt()) } ?: 0
+        if (peak > 0) {
+            val gain = 28000.0 / peak
+            for (i in out.indices) {
+                out[i] = (out[i].toDouble() * gain)
+                    .coerceIn(-30000.0, 30000.0).toInt().toShort()
+            }
         }
         return out
     }

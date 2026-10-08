@@ -2,6 +2,7 @@ package com.meowalarm.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.TimePickerDialog
 import android.app.NotificationManager
 import android.content.Intent
 import android.net.Uri
@@ -32,6 +33,18 @@ class MainActivity : Activity() {
         web.addJavascriptInterface(Bridge(this), "Android")
         web.loadUrl("file:///android_asset/index.html")
         askPermissions()
+    }
+
+    /** Android's native time picker works even when WebView time inputs do not. */
+    fun showAlarmTimePicker() {
+        val prefs = Alarms.prefs(this)
+        val hour = prefs.getInt("h", 7).coerceIn(0, 23)
+        val minute = prefs.getInt("m", 0).coerceIn(0, 59)
+        TimePickerDialog(this, { _, selectedHour, selectedMinute ->
+            if (::web.isInitialized) {
+                web.evaluateJavascript("window.onNativeTimePicked($selectedHour,$selectedMinute)", null)
+            }
+        }, hour, minute, true).show()
     }
 
     /** Only wake/hold the screen while an alarm is actually ringing. */

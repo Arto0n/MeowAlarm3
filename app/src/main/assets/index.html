@@ -16,6 +16,11 @@ h1{font-weight:400;font-size:2.3rem;margin:2px 0 10px;color:#fff;text-shadow:3px
 @keyframes wig{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
 .card{background:var(--card);border:3px solid var(--ink);border-radius:22px;box-shadow:5px 5px 0 var(--ink);width:100%;max-width:560px;margin:0 0 14px;padding:8px;overflow:hidden}
 .clock{background:var(--sun);color:#1f2a6b;font-size:4rem;line-height:1.2;text-align:center;direction:ltr;letter-spacing:.06em}
+.clockHint{margin:-9px 0 14px;font-size:.86rem;text-align:center}
+.native .clock{cursor:pointer}
+#pickTime{display:none;font-size:1.08rem;padding:8px 14px}
+.native #pickTime{display:inline-block}
+.native #at{display:none}
 .panel{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;padding:12px 16px}
 .panel label{display:flex;align-items:center;gap:8px}
 input[type=time],select{font:inherit;font-size:1.5rem;border:3px solid var(--ink);border-radius:14px;padding:0 10px;background:#fff;color:#1f2a6b;direction:ltr}
@@ -55,8 +60,9 @@ body.ring{animation:flash .5s infinite alternate}
 <body>
 <h1>آلارم میومیو 🐱</h1>
 <div class="card clock" id="clock">--:--</div>
+<p class="clockHint" id="clockHint">ساعت فعلی</p>
 <div class="card panel">
-<label>بیدارم کن <input id="at" type="time" value="07:00"></label>
+<label>بیدارم کن <input id="at" type="time" value="07:00"><button id="pickTime" type="button">⏰ 07:00 · تغییر ساعت</button></label>
 <label class="sw"><input id="on" type="checkbox"><span></span>روشن</label>
 </div>
 <div class="card scene">
@@ -133,6 +139,7 @@ body.ring{animation:flash .5s infinite alternate}
 <script>
 const $=id=>document.getElementById(id),svg=$('s'),SH={x:112,y:140},HEAD={x:238,y:222},REST={x:150,y:190},MOUTH={x:138,y:113},NS='http://www.w3.org/2000/svg';
 const NATIVE=typeof Android!=='undefined';
+if(NATIVE){document.documentElement.classList.add('native');$('clockHint').textContent='ساعت فعلی — برای تنظیم آلارم این ساعت را لمس کن';}
 let P=null,hand={x:150,y:190},lvl=100,sleep=true,state=-1,lastPet=-9,lastHeart=0,last=null,dip=0,muted=false,aud=null,ph=null,mb=0,lastPuff=0,nextMeow=1,meowEnd=0,mode='idle',snoozeEnd=0,ringStart=0,testAt=0,fired='',alarmOn=false,lastMsg='',curPt=-1,done=false,food=0,fill=0,fedAt=0,sleepAt=0,bagRot=0,lastKib=0,smoked=false;
 const pt0=e=>{const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse())};
 const inCat=p=>((p.x-292)/90)**2+((p.y-232)/52)**2<1;
@@ -140,12 +147,12 @@ function initAudio(){if(aud||muted)return;try{
   const c=new(window.AudioContext||window.webkitAudioContext)(),b=c.createBuffer(1,c.sampleRate*2,c.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
   const src=c.createBufferSource();src.buffer=b;src.loop=true;
-  const lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=220;
-  const am=c.createGain();am.gain.value=.5;
+  const lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=430;
+  const am=c.createGain();am.gain.value=.65;
   const lfo=c.createOscillator();lfo.frequency.value=25;const lg=c.createGain();lg.gain.value=.5;lfo.connect(lg);lg.connect(am.gain);
   const m=c.createGain();m.gain.value=0;src.connect(lp);lp.connect(am);am.connect(m);m.connect(c.destination);
   src.start();lfo.start();aud={c,m};vol();}catch(e){}}
-function vol(){if(!aud)return;aud.c.resume&&aud.c.resume();aud.m.gain.setTargetAtTime(muted?0:[0,.35,0][state<0?0:state],aud.c.currentTime,.3)}
+function vol(){if(!aud)return;aud.c.resume&&aud.c.resume();aud.m.gain.setTargetAtTime(muted?0:[0,.7,0][state<0?0:state],aud.c.currentTime,.3)}
 function meow(vl=1){if(NATIVE||!aud||muted)return;aud.c.resume&&aud.c.resume();const c=aud.c,s=c.currentTime+.02,o=c.createOscillator(),g=c.createGain(),f1=c.createBiquadFilter(),f2=c.createBiquadFilter(),g1=c.createGain(),g2=c.createGain(),lp=c.createBiquadFilter(),v=c.createOscillator(),vg=c.createGain();
   const fr=o.frequency;fr.setValueAtTime(420,s);fr.linearRampToValueAtTime(720,s+.18);fr.linearRampToValueAtTime(600,s+.4);fr.linearRampToValueAtTime(340,s+.68);
   v.frequency.value=7;vg.gain.value=10;v.connect(vg);vg.connect(fr);
@@ -156,6 +163,26 @@ function meow(vl=1){if(NATIVE||!aud||muted)return;aud.c.resume&&aud.c.resume();c
   g.gain.setValueAtTime(0,s);g.gain.linearRampToValueAtTime(.4*vl,s+.1);g.gain.linearRampToValueAtTime(.3*vl,s+.4);g.gain.linearRampToValueAtTime(0,s+.7);
   o.connect(f1);o.connect(f2);f1.connect(g1);f2.connect(g2);g1.connect(lp);g2.connect(lp);lp.connect(g);g.connect(c.destination);
   o.start(s);v.start(s);o.stop(s+.72);v.stop(s+.72)}
+// A clear, short "putt-putt" when the cat finishes eating.
+function feedSound(){
+  if(muted)return;
+  initAudio();
+  if(!aud)return;
+  const c=aud.c;
+  c.resume&&c.resume();
+  const start=c.currentTime+.02;
+  for(let i=0;i<3;i++){
+    const t=start+i*.16,osc=c.createOscillator(),gain=c.createGain();
+    osc.type='triangle';
+    osc.frequency.setValueAtTime(420-i*48,t);
+    osc.frequency.exponentialRampToValueAtTime(180-i*18,t+.13);
+    gain.gain.setValueAtTime(.001,t);
+    gain.gain.exponentialRampToValueAtTime(.72,t+.015);
+    gain.gain.exponentialRampToValueAtTime(.001,t+.16);
+    osc.connect(gain);gain.connect(c.destination);
+    osc.start(t);osc.stop(t+.17);
+  }
+}
 function setState(s){state=s;
   $('cOpen').style.display=s===0?'':'none';$('cHappy').style.display=s===1?'':'none';$('cSleep').style.display=s===2?'':'none';
   $('zs').style.display=s===2?'':'none';vol();}
@@ -201,7 +228,7 @@ function frame(ts){const t=ts/1000,dt=Math.min(.05,t-(last??t));last=t;
     e.style.setProperty('--fy',(276-ky)+'px');e.style.setProperty('--fx',(192+Math.random()*16-kx)+'px');fill=Math.min(100,fill+2.4)}
   const kb=$('kib');kb.style.display=fill>0?'':'none';kb.setAttribute('rx',4+17*fill/100);kb.setAttribute('ry',1+8*fill/100);
   $('bowl').style.display=food===1||mode==='fed'||(done&&mode==='idle')?'':'none';
-  if(fill>=100&&mode==='snooze'){mode='fed';food=0;fedAt=t;done=true;sleep=false;lvl=45;ph=null;if(NATIVE)Android.dismiss()}
+  if(fill>=100&&mode==='snooze'){mode='fed';food=0;fedAt=t;done=true;sleep=false;lvl=45;ph=null;feedSound();if(NATIVE)Android.dismiss()}
   // cigarette
   mb+=((ph&&pt>.6&&pt<6.6?1:0)-mb)*Math.min(1,dt*5);
   const ang=-35*(1-mb);
@@ -242,7 +269,8 @@ function updUI(pt){
   if(m!==lastMsg){$('msg').textContent=m;lastMsg=m}
   $('bar').style.width=(mode==='ringing'?lvl:mode==='snooze'?(food===1?fill:100*rem/60000):mode==='fed'?100:0)+'%';
   const h=$('hint');h.style.display=food===1&&fill<15&&mode==='snooze'?'':'none';h.setAttribute('cx',200);h.setAttribute('cy',262);h.setAttribute('r',34)}
-function save(){if(NATIVE){const q=$('at').value.split(':');Android.setAlarm(+q[0],+q[1],alarmOn)}try{localStorage.setItem('mm',JSON.stringify({at:$('at').value,on:alarmOn}))}catch(e){}}
+function updatePickedTime(){$('pickTime').textContent='⏰ '+$('at').value+' · تغییر ساعت'}
+function save(){updatePickedTime();if(NATIVE){const q=$('at').value.split(':');Android.setAlarm(+q[0],+q[1],alarmOn)}try{localStorage.setItem('mm',JSON.stringify({at:$('at').value,on:alarmOn}))}catch(e){}}
 try{
   // SharedPreferences is the source of truth on Android. localStorage is used
   // only for the standalone browser demo; never overwrite saved native alarms.
@@ -252,6 +280,21 @@ try{
   alarmOn=!!d.on;
   $('on').checked=alarmOn;
 }catch(e){console.error('Unable to load alarm preferences',e)}
+updatePickedTime();
+window.onNativeTimePicked=(h,m)=>{
+  $('at').value=two(h)+':'+two(m);
+  done=false;
+  save();
+};
+function openAlarmTime(){if(NATIVE)Android.pickTime();else $('at').focus()}
+$('pickTime').onclick=openAlarmTime;
+if(NATIVE){
+  $('clock').onclick=openAlarmTime;
+  $('clock').setAttribute('role','button');
+  $('clock').setAttribute('tabindex','0');
+  $('clock').setAttribute('aria-label','تنظیم ساعت آلارم');
+  $('clock').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAlarmTime()}};
+}
 async function lock(){try{if(alarmOn&&navigator.wakeLock)await navigator.wakeLock.request('screen')}catch(e){}}
 $('at').onchange=save;
 $('on').onchange=()=>{alarmOn=$('on').checked;done=false;fired='';initAudio();save();lock()};

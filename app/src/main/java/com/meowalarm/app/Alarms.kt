@@ -107,6 +107,12 @@ class Bridge(private val c: Context) {
     }
 
     @JavascriptInterface
+    fun pickTime() {
+        val activity = c as? MainActivity ?: return
+        activity.runOnUiThread { activity.showAlarmTimePicker() }
+    }
+
+    @JavascriptInterface
     fun ringIn(sec: Int) = Alarms.scheduleSnooze(c, sec)
 
     @JavascriptInterface
