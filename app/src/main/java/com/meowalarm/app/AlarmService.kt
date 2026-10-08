@@ -7,7 +7,6 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.os.*
 import kotlin.math.*
 
@@ -20,7 +19,7 @@ class AlarmService : Service() {
     }
 
     private var track: AudioTrack? = null
-    private var fallbackPlayer: MediaPlayer? = null
+    private var meowPlayer: MediaPlayer? = null
     private var vol = 0.8f
     private val handler = Handler(Looper.getMainLooper())
     private val ramp = object : Runnable {
@@ -93,7 +92,52 @@ class AlarmService : Service() {
     }
 
     private fun startSound() {
-        if (track != null) return
+        if (meowPlayer != null || track != null) return
+
+        // Play an offline recording of a real cat through Android's ALARM audio stream.
+        // The recording is bundled in res/raw by install-real-meow.ps1.
+        var candidate: MediaPlayer? = null
+        try {
+            val alarmAudio = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            candidate = MediaPlayer.create(this, R.raw.real_cat_meow, alarmAudio, 0)
+                ?: error("Could not decode bundled cat-meowing audio")
+            candidate.isLooping = true
+            candidate.setVolume(1f, 1f)
+            candidate.setOnErrorListener { failedPlayer, what, extra ->
+                android.util.Log.e("MeowAlarm", "Real cat audio error ($what, $extra); trying synthesized meow")
+                if (meowPlayer === failedPlayer) meowPlayer = null
+                runCatching { failedPlayer.release() }
+                startSynthesizedMeow()
+                true
+            }
+            candidate.start()
+            meowPlayer = candidate
+            candidate = null  // service now owns the MediaPlayer
+        } catch (ex: Exception) {
+            android.util.Log.e("MeowAlarm", "Unable to play recorded cat audio", ex)
+            startSynthesizedMeow()
+        } finally {
+            runCatching { candidate?.release() }
+        }
+
+        // Continue vibrating alongside the meows, including when the screen is locked.
+        val vibrator = getSystemService(Vibrator::class.java)
+        if (vibrator?.hasVibrator() == true) {
+            val effect = VibrationEffect.createWaveform(longArrayOf(0, 400, 300), 0)
+            if (Build.VERSION.SDK_INT >= 31) {
+                vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
+            } else {
+                @Suppress("DEPRECATION") vibrator.vibrate(effect)
+            }
+        }
+    }
+
+    /** Emergency audio fallback: a synthetic meow, never the phone's default ringtone. */
+    private fun startSynthesizedMeow() {
+        if (track != null || meowPlayer != null) return
         val sampleRate = 22050
         val samples = Meow.make(sampleRate)
         var candidate: AudioTrack? = null
@@ -129,64 +173,21 @@ class AlarmService : Service() {
             handler.removeCallbacks(ramp)
             handler.postDelayed(ramp, 1500)
         } catch (ex: Exception) {
-            android.util.Log.e("MeowAlarm", "Unable to start synthesized alarm audio, trying system alarm tone", ex)
-            startFallbackSound()
+            android.util.Log.e("MeowAlarm", "Unable to start synthesized meow alarm audio", ex)
+            android.util.Log.e("MeowAlarm", "Synthesized meow also failed; alarm will still vibrate")
         } finally {
             // A failed AudioTrack must not leak its underlying native audio resources.
             runCatching { candidate?.release() }
         }
 
-        // Vibration should still work if audio initialization failed.
-        val vibrator = getSystemService(Vibrator::class.java)
-        if (vibrator?.hasVibrator() == true) {
-            val effect = VibrationEffect.createWaveform(longArrayOf(0, 400, 300), 0)
-            if (Build.VERSION.SDK_INT >= 31) {
-                vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
-            } else {
-                @Suppress("DEPRECATION") vibrator.vibrate(effect)
-            }
-        }
-    }
-
-    /** Use the phone's alarm tone if custom audio playback fails on this device. */
-    private fun startFallbackSound() {
-        val uris = listOfNotNull(
-            runCatching { RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM) }.getOrNull(),
-            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        )
-        for (uri in uris) {
-            var candidate: MediaPlayer? = null
-            try {
-                val player = MediaPlayer()
-                candidate = player
-                player.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                player.setDataSource(this, uri)
-                player.isLooping = true
-                player.prepare()
-                player.setVolume(1f, 1f)
-                player.start()
-                fallbackPlayer = player
-                return
-            } catch (ex: Exception) {
-                android.util.Log.w("MeowAlarm", "Could not play fallback alarm tone: $uri", ex)
-                runCatching { candidate?.release() }
-            }
-        }
-        android.util.Log.e("MeowAlarm", "No alarm audio could be started; check alarm volume and default alarm tone")
     }
 
     private fun stopRing() {
         handler.removeCallbacks(ramp)
         track?.let { runCatching { it.pause() }; runCatching { it.flush() }; runCatching { it.release() } }
         track = null
-        fallbackPlayer?.let { runCatching { it.stop() }; runCatching { it.release() } }
-        fallbackPlayer = null
+        meowPlayer?.let { runCatching { it.stop() }; runCatching { it.release() } }
+        meowPlayer = null
         getSystemService(Vibrator::class.java)?.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         Ring.active = false

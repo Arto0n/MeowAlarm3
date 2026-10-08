@@ -1,0 +1,10 @@
+Real-cat alarm recording (bundled by install-real-meow.ps1)
+
+Title: Meow of a pleading cat.oga
+Description: A real cat asking to get out.
+Author: Heismark
+Source: https://commons.wikimedia.org/wiki/File:Meow_of_a_pleading_cat.oga
+License: Public domain (released into the public domain by the author).
+
+The source recording is downloaded into app/src/main/res/raw/real_cat_meow.ogg,
+and is included locally in the APK. The alarm does not stream audio.
