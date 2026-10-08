@@ -21,20 +21,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Install required Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
-          # setup-android puts sdkmanager on PATH and sets ANDROID_HOME.
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          sdkmanager --version
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          test -f "$ANDROID_HOME/platforms/android-34/android.jar" || {
-            echo "Android SDK Platform 34 is missing from $ANDROID_HOME" >&2
-            exit 1
-          }
+          test -f "$ANDROID_HOME/platforms/android-34/android.jar"
           sdkmanager --list_installed
+
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
