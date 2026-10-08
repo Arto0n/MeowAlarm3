@@ -22,15 +22,33 @@ jobs:
           java-version: '17'
 
 
+      
       - name: Install required Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          sdkmanager --version
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "Android SDK manager not found at $SDKMANAGER"
+            exit 1
+          fi
+
+          "$SDKMANAGER" --version
+
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
           test -f "$ANDROID_HOME/platforms/android-34/android.jar"
-          sdkmanager --list_installed
+
+          "$SDKMANAGER" --list_installed
+
 
 
       - name: Set up Gradle 8.9
