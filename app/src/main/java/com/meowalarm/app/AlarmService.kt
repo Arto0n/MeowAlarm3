@@ -123,15 +123,24 @@ class AlarmService : Service() {
             runCatching { candidate?.release() }
         }
 
-        // Continue vibrating alongside the meows, including when the screen is locked.
-        val vibrator = getSystemService(Vibrator::class.java)
-        if (vibrator?.hasVibrator() == true) {
-            val effect = VibrationEffect.createWaveform(longArrayOf(0, 400, 300), 0)
-            if (Build.VERSION.SDK_INT >= 31) {
-                vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
-            } else {
-                @Suppress("DEPRECATION") vibrator.vibrate(effect)
+        // Keep the audible alarm running even if MIUI/Android rejects vibration.
+        // Some devices throw SecurityException or runtime errors during vibrate().
+        try {
+            val vibrator = getSystemService(Vibrator::class.java)
+            if (vibrator?.hasVibrator() == true) {
+                val effect = VibrationEffect.createWaveform(longArrayOf(0, 400, 300), 0)
+                if (Build.VERSION.SDK_INT >= 31) {
+                    vibrator.vibrate(
+                        effect,
+                        VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(effect)
+                }
             }
+        } catch (ex: Exception) {
+            android.util.Log.e("MeowAlarm", "Vibration failed; continuing audible alarm", ex)
         }
     }
 
@@ -188,7 +197,11 @@ class AlarmService : Service() {
         track = null
         meowPlayer?.let { runCatching { it.stop() }; runCatching { it.release() } }
         meowPlayer = null
-        getSystemService(Vibrator::class.java)?.cancel()
+        try {
+            getSystemService(Vibrator::class.java)?.cancel()
+        } catch (ex: Exception) {
+            android.util.Log.w("MeowAlarm", "Unable to cancel vibration", ex)
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         Ring.active = false
         Ring.listener?.invoke()
